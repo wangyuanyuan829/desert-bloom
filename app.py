@@ -4,390 +4,995 @@ import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="Desert Bloom",
-    page_icon="🌱",
+    page_icon="🌵",
     layout="centered"
 )
 
-# --------------------------------------------------
-# 1. GAME SETTINGS
-# Directions: E, SE, SW, W, NW, NE
-# --------------------------------------------------
-
-OPPOSITE = {0: 3, 1: 4, 2: 5, 3: 0, 4: 1, 5: 2}
-
-CELLS = [(r, c) for r in range(3) for c in range(3)]
-START = (1, 0)
-GOAL = (1, 2)
-
-BASE_PAIRS = {
-    (0, 0): (0, 3),
-    (0, 1): (0, 3),
-    (0, 2): (1, 4),
-    (1, 0): (0, 3),
-    (1, 1): (0, 3),
-    (1, 2): (0, 3),
-    (2, 0): (1, 4),
-    (2, 1): (0, 3),
-    (2, 2): (0, 3),
-}
-
-# --------------------------------------------------
-# 2. HEXAGON NEIGHBOURS
-# Odd-row offset layout
-# --------------------------------------------------
-
-def neighbour(cell, direction):
-    r, c = cell
-
-    if direction == 0:
-        return (r, c + 1)
-    if direction == 3:
-        return (r, c - 1)
-
-    if r % 2 == 0:
-        offsets = {
-            1: (1, 0), 2: (1, -1),
-            4: (-1, -1), 5: (-1, 0)
-        }
-    else:
-        offsets = {
-            1: (1, 1), 2: (1, 0),
-            4: (-1, 0), 5: (-1, 1)
-        }
-
-    dr, dc = offsets[direction]
-    return (r + dr, c + dc)
-
-
-def openings(cell):
-    pair = BASE_PAIRS[cell]
-    turn = st.session_state.turns[cell]
-    return {
-        (pair[0] + turn) % 6,
-        (pair[1] + turn) % 6
-    }
-
-
-def connected_cells():
-    seen = {START}
-    stack = [START]
-
-    while stack:
-        cell = stack.pop()
-
-        for direction in openings(cell):
-            nxt = neighbour(cell, direction)
-
-            if nxt not in CELLS or nxt in seen:
-                continue
-
-            if OPPOSITE[direction] in openings(nxt):
-                seen.add(nxt)
-                stack.append(nxt)
-
-    return seen
-
-
-def initialise():
-    st.session_state.turns = {
-        cell: 0 for cell in CELLS
-    }
-    # The starting puzzle is not solved immediately.
-    st.session_state.turns[(1, 1)] = 1
-    st.session_state.moves = 0
-
-
-if "turns" not in st.session_state:
-    initialise()
-
-
-# --------------------------------------------------
-# 3. DRAW A HEXAGON WITH AN IRRIGATION CHANNEL
-# Render SVG inside a component iframe so it is
-# displayed as artwork, not as source code.
-# --------------------------------------------------
-
-def tile_svg(cell, wet, won):
-    pair = openings(cell)
-
-    # Six points around the centre of the hexagon.
-    points = [
-        (166, 100),  # E
-        (133, 157),  # SE
-        (67, 157),   # SW
-        (34, 100),   # W
-        (67, 43),    # NW
-        (133, 43),   # NE
-    ]
-
-    x1, y1 = points[pair.pop()] if False else (0, 0)
-    # Sort the two openings for consistent drawing.
-    a, b = sorted(openings(cell))
-    x1, y1 = points[a]
-    x2, y2 = points[b]
-
-    path = f"M {x1} {y1} L 100 100 L {x2} {y2}"
-
-    ground = "#b9dce4" if wet else "#e8d3a5"
-    border = "#fff7e7"
-    pipe_outer = "#377fa6" if wet else "#b49a6d"
-    pipe_inner = "#72d9f5" if wet else "#d4bc8e"
-
-    if cell == START:
-        plant_or_well = """
-        <circle cx="100" cy="100" r="21"
-                fill="#e8f8ff" stroke="#368fbd" stroke-width="3"/>
-        <path d="M100 82 C91 96 88 101 88 107
-                 A12 12 0 0 0 112 107
-                 C112 101 109 96 100 82Z"
-              fill="#36a9e8"/>
-        """
-    elif cell == GOAL and won:
-        plant_or_well = """
-        <path d="M100 137 L100 98 M100 119 L78 99 M100 111 L121 91"
-              fill="none" stroke="#397f39" stroke-width="7"
-              stroke-linecap="round"/>
-        <ellipse cx="77" cy="97" rx="16" ry="8"
-                 transform="rotate(35 77 97)" fill="#65ad4c"/>
-        <ellipse cx="122" cy="89" rx="16" ry="8"
-                 transform="rotate(-35 122 89)" fill="#65ad4c"/>
-        <ellipse cx="100" cy="91" rx="9" ry="15" fill="#7dc75b"/>
-        """
-    elif cell == GOAL:
-        plant_or_well = """
-        <path d="M100 137 L100 111 M100 126 L82 116 M100 129 L118 119"
-              fill="none" stroke="#92985a" stroke-width="7"
-              stroke-linecap="round"/>
-        <ellipse cx="81" cy="114" rx="14" ry="7"
-                 transform="rotate(25 81 114)" fill="#aab36d"/>
-        <ellipse cx="119" cy="117" rx="14" ry="7"
-                 transform="rotate(-25 119 117)" fill="#b3b96f"/>
-        """
-    else:
-        plant_or_well = ""
-
-    animation = ""
-    if wet:
-        animation = f"""
-        <path d="{path}" fill="none" stroke="#e9fbff"
-              stroke-width="3" stroke-dasharray="6 12"
-              stroke-linecap="round">
-          <animate attributeName="stroke-dashoffset"
-                   from="0" to="-36" dur="1.2s"
-                   repeatCount="indefinite"/>
-        </path>
-        """
-
-    status = "WATER" if wet else "DRY"
-    status_color = "#286f96" if wet else "#9a7c51"
-
-    return f"""
-    <html>
-    <head>
-    <style>
-      html, body {{
-        margin: 0;
-        padding: 0;
-        background: transparent;
-        overflow: hidden;
-      }}
-      svg {{
-        display: block;
-        width: 100%;
-        height: auto;
-      }}
-    </style>
-    </head>
-    <body>
-    <svg viewBox="0 0 200 200"
-         xmlns="http://www.w3.org/2000/svg">
-      <polygon points="100,8 180,54 180,146
-                       100,192 20,146 20,54"
-               fill="{ground}" stroke="{border}"
-               stroke-width="5" stroke-linejoin="round"/>
-      <polygon points="100,18 170,59 170,141
-                       100,182 30,141 30,59"
-               fill="none" stroke="#d8bf8e" stroke-width="1.5"/>
-
-      <path d="{path}" fill="none" stroke="{pipe_outer}"
-            stroke-width="22" stroke-linecap="round"
-            stroke-linejoin="round"/>
-      <path d="{path}" fill="none" stroke="{pipe_inner}"
-            stroke-width="12" stroke-linecap="round"
-            stroke-linejoin="round"/>
-      {animation}
-      <circle cx="100" cy="100" r="6" fill="{pipe_outer}"/>
-
-      {plant_or_well}
-
-      <text x="100" y="174" text-anchor="middle"
-            font-family="Arial,sans-serif" font-size="11"
-            font-weight="bold" fill="{status_color}">
-        {status}
-      </text>
-    </svg>
-    </body>
-    </html>
-    """
-
-
-# --------------------------------------------------
-# 4. PAGE DESIGN
-# --------------------------------------------------
-
-st.markdown("""
+GAME_HTML = r"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-.stApp {
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
     background: #f8efd9;
+    color: #39343b;
+    font-family: Arial, sans-serif;
 }
-.block-container {
-    max-width: 850px;
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
+
+.game {
+    max-width: 650px;
+    width: 100%;
+    margin: auto;
+    padding: 12px 5px 20px;
 }
-h1, h2, h3, p, label {
-    color: #4c3928;
+
+.header {
+    position: relative;
+    text-align: center;
+    margin-bottom: 8px;
 }
-.hero {
-    font-size: clamp(2.2rem, 6vw, 3.8rem);
-    font-weight: 850;
-    letter-spacing: -1px;
+
+.title {
+    font-size: clamp(27px, 5vw, 38px);
+    font-weight: 800;
+    margin: 0;
 }
+
 .subtitle {
-    color: #9a8266;
-    font-size: 1.1rem;
-    margin-bottom: 1.2rem;
+    color: #a08b70;
+    font-size: 13px;
+    margin-top: 6px;
 }
-div.stButton > button {
-    min-height: 38px;
-    border-radius: 10px;
-    border: 1px solid #c8aa78;
-    background: #f1dfba;
-    color: #60472e;
+
+.sound-button {
+    position: absolute;
+    right: 0;
+    top: 0;
+    border: 1px solid #dfcba6;
+    background: #fff8e9;
+    color: #755b3b;
+    border-radius: 50%;
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.board {
+    width: 100%;
+    display: block;
+    margin: 0 auto;
+    touch-action: manipulation;
+}
+
+.tile {
+    cursor: pointer;
+    outline: none;
+}
+
+.tile polygon {
+    transition: fill 0.25s ease;
+}
+
+.tile:hover polygon:first-child {
+    stroke: #ffffff;
+    stroke-width: 4;
+}
+
+.tile:focus polygon:first-child {
+    stroke: #448eaf;
+    stroke-width: 4;
+}
+
+.flow-line {
+    stroke-dasharray: 5 10;
+    animation: flow 1s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes flow {
+    to { stroke-dashoffset: -30; }
+}
+
+.hint-ring {
+    fill: none;
+    stroke: #f3a94e;
+    stroke-width: 3;
+    stroke-dasharray: 5 4;
+    animation: pulse 1.2s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.hint-hand {
+    font-size: 29px;
+    animation: tap 0.8s ease-in-out infinite alternate;
+    pointer-events: none;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.45; r: 23; }
+    50% { opacity: 1; r: 28; }
+}
+
+@keyframes tap {
+    from { transform: translateY(0); }
+    to { transform: translateY(6px); }
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 8px 0 12px;
+}
+
+.stat {
+    background: rgba(255,255,255,0.36);
+    border: 1px solid #e7d7b8;
+    border-radius: 12px;
+    padding: 12px 15px;
+}
+
+.stat-label {
+    color: #8d765b;
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 26px;
     font-weight: 700;
 }
-div.stButton > button:hover {
-    background: #d7edf8;
-    border-color: #3989bd;
-    color: #17679d;
+
+.reset {
+    width: 100%;
+    border: 1px solid #d5b77e;
+    background: #f0dfbd;
+    color: #61492e;
+    border-radius: 10px;
+    padding: 11px;
+    font-size: 14px;
+    cursor: pointer;
 }
-div[data-testid="stMetric"] {
-    background: rgba(255,255,255,.3);
-    padding: 14px;
+
+.reset:hover, .sound-button:hover {
+    background: #e5d0a6;
+}
+
+.message {
+    text-align: center;
+    color: #528047;
+    font-size: 14px;
+    font-weight: bold;
+    min-height: 20px;
+    margin-top: 8px;
+}
+
+.celebration {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: rgba(48, 48, 42, 0.48);
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.celebration.show {
+    display: flex;
+}
+
+.win-card {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 330px;
+    background: #fff7e5;
+    border: 2px solid #e6c985;
+    border-radius: 22px;
+    padding: 28px 20px;
+    text-align: center;
+    box-shadow: 0 12px 40px #44331f35;
+    animation: pop 0.4s ease-out;
+}
+
+@keyframes pop {
+    from { transform: scale(.7); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.win-plant {
+    font-size: 54px;
+    margin-bottom: 8px;
+}
+
+.win-title {
+    font-size: 25px;
+    font-weight: 800;
+    color: #427b3c;
+    margin-bottom: 10px;
+}
+
+.win-description {
+    color: #806b4e;
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+.play-again {
+    border: none;
     border-radius: 12px;
-    border: 1px solid #eadbc0;
+    padding: 12px 24px;
+    background: #77a957;
+    color: white;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.confetti {
+    position: fixed;
+    z-index: 1;
+    top: -15px;
+    width: 9px;
+    height: 13px;
+    animation: fall 2.8s linear forwards;
+    pointer-events: none;
+}
+
+@keyframes fall {
+    to { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+}
+
+@media (max-width: 420px) {
+    .game { padding-left: 0; padding-right: 0; }
+    .stat { padding: 10px; }
 }
 </style>
-""", unsafe_allow_html=True)
+</head>
 
-st.markdown(
-    '<div class="hero">🌵 Desert Bloom</div>',
-    unsafe_allow_html=True
-)
-st.markdown(
-    '<div class="subtitle">A little water. A new life.</div>',
-    unsafe_allow_html=True
-)
-st.write(
-    "Rotate the hexagonal channels to guide water "
-    "from the well to the thirsty seedling."
-)
+<body>
+<div class="game">
+    <div class="header">
+        <h1 class="title">🌵 Desert Bloom</h1>
+        <div class="subtitle">A little water. A new life.</div>
+        <button id="soundButton" class="sound-button"
+                aria-label="Toggle music and sound"
+                title="Toggle music and sound">♫</button>
+    </div>
 
-with st.container(border=True):
-    st.markdown("**How to play**")
-    st.write("1. Press ↻ to rotate a channel by 60°.")
-    st.write("2. Connect neighbouring channels from 💧 the well to 🥀 the seedling.")
-    st.write("3. When water reaches the seedling, the desert blooms.")
+    <svg id="board" class="board"
+         viewBox="0 0 500 470"
+         xmlns="http://www.w3.org/2000/svg"
+         aria-label="Desert water channel puzzle"></svg>
 
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-label">Moves</div>
+            <div class="stat-value" id="moves">0</div>
+        </div>
+        <div class="stat">
+            <div class="stat-label">Plants watered</div>
+            <div class="stat-value" id="plantCount">0 / 2</div>
+        </div>
+    </div>
 
-# --------------------------------------------------
-# 5. HONEYCOMB BOARD
-# The middle row is shifted to create a honeycomb.
-# --------------------------------------------------
+    <button class="reset" id="reset">↻ Reset</button>
+    <div class="message" id="message"></div>
+</div>
 
-reachable = connected_cells()
-is_won = GOAL in reachable
+<div id="celebration" class="celebration">
+    <div class="win-card">
+        <div class="win-plant">🌱 🌿</div>
+        <div class="win-title">Desert Bloom!</div>
+        <div class="win-description">
+            Both little plants are alive again.<br>
+            Your water has brought life to the desert!
+        </div>
+        <button class="play-again" id="playAgain">
+            Play again
+        </button>
+    </div>
+</div>
 
-st.markdown("## Your desert")
-st.caption("Blue channels are connected to the water source.")
+<script>
+"use strict";
 
-for r in range(3):
-    if r == 1:
-        left_space, tile_area, right_space = st.columns(
-            [0.5, 4, 0.5]
-        )
-    else:
-        left_space, tile_area, right_space = st.columns(
-            [0.1, 4, 0.1]
-        )
+// --------------------------------------------------
+// 1. HEXAGON MAP: 19 tiles in a honeycomb.
+// Axial coordinates form a hexagonal cluster.
+// --------------------------------------------------
 
-    with tile_area:
-        cols = st.columns(3, gap="small")
+const R = 46;
+const SQRT3 = Math.sqrt(3);
 
-        for c in range(3):
-            cell = (r, c)
+const START = "-2,0";
+const GOALS = ["2,-1", "2,0"];
 
-            # Shift the middle row slightly right.
-            if r == 1:
-                # Keep a little extra space before the first tile.
-                pass
+const DIRECTIONS = [
+    [1, 0],
+    [0, 1],
+    [-1, 1],
+    [-1, 0],
+    [0, -1],
+    [1, -1]
+];
 
-            with cols[c]:
-                components.html(
-                    tile_svg(cell, cell in reachable, is_won),
-                    height=155,
-                    scrolling=False
-                )
+const cells = [];
 
-                if st.button(
-                    "↻ Rotate",
-                    key=f"rotate_{r}_{c}",
-                    use_container_width=True
-                ):
-                    st.session_state.turns[cell] = (
-                        st.session_state.turns[cell] + 1
-                    ) % 6
-                    st.session_state.moves += 1
-                    st.rerun()
+for (let q = -2; q <= 2; q++) {
+    for (let r = -2; r <= 2; r++) {
+        if (Math.abs(q + r) <= 2) {
+            cells.push({q, r, key: `${q},${r}`});
+        }
+    }
+}
 
+const cellKeys = new Set(cells.map(c => c.key));
 
-# --------------------------------------------------
-# 6. PROGRESS AND RESET
-# --------------------------------------------------
+function neighbour(key, direction) {
+    const [q, r] = key.split(",").map(Number);
+    const [dq, dr] = DIRECTIONS[direction];
+    return `${q + dq},${r + dr}`;
+}
 
-st.divider()
+function opposite(direction) {
+    return (direction + 3) % 6;
+}
 
-left, right = st.columns(2)
+// --------------------------------------------------
+// 2. CREATE A SOLVABLE WATER NETWORK.
+// The solved network connects the source to both plants.
+// --------------------------------------------------
 
-with left:
-    st.metric("Moves", st.session_state.moves)
+function createSolutionMasks() {
+    const masks = {};
 
-with right:
-    st.metric(
-        "Tiles reached by water",
-        f"{len(reachable)} / 9"
-    )
+    for (const cell of cells) {
+        masks[cell.key] = [];
+    }
 
-if is_won:
-    st.success(
-        "🌱 The water reached the seedling! "
-        "The desert is blooming!"
-    )
-    st.balloons()
-else:
-    st.info(
-        "The seedling is still thirsty. "
-        "Keep rotating the channels to guide the water."
-    )
+    const visited = new Set([START]);
+    const queue = [START];
 
-if st.button(
-    "↻ Reset puzzle",
-    type="primary",
-    use_container_width=True
-):
-    initialise()
-    st.rerun()
+    while (queue.length > 0) {
+        const key = queue.shift();
 
-st.caption(
-    "Desert Bloom · Connect the channels, deliver the water, restore life."
+        for (let d = 0; d < 6; d++) {
+            const next = neighbour(key, d);
+
+            if (!cellKeys.has(next) || visited.has(next)) {
+                continue;
+            }
+
+            visited.add(next);
+            queue.push(next);
+
+            masks[key].push(d);
+            masks[next].push(opposite(d));
+        }
+    }
+
+    return masks;
+}
+
+const SOLUTION_MASKS = createSolutionMasks();
+
+// Each tile starts rotated away from the solution.
+// A click rotates it by 60 degrees.
+let turns = {};
+let moves = 0;
+let soundOn = true;
+let audioContext = null;
+let musicTimer = null;
+let musicIndex = 0;
+let previousGoals = null;
+let victoryShown = false;
+
+// --------------------------------------------------
+// 3. SOUND: generated with Web Audio, no audio files.
+// Browsers require a user gesture before playing audio.
+// --------------------------------------------------
+
+function ensureAudio() {
+    try {
+        if (!audioContext) {
+            const AudioClass =
+                window.AudioContext || window.webkitAudioContext;
+
+            if (!AudioClass) return false;
+            audioContext = new AudioClass();
+        }
+
+        if (audioContext.state === "suspended") {
+            audioContext.resume();
+        }
+
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+function tone(frequency, duration, volume, type = "sine", delay = 0) {
+    if (!soundOn || !audioContext) return;
+
+    try {
+        const start = audioContext.currentTime + delay;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, start);
+
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.linearRampToValueAtTime(
+            volume, start + 0.025
+        );
+        gain.gain.exponentialRampToValueAtTime(
+            0.0001, start + duration
+        );
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start(start);
+        oscillator.stop(start + duration + 0.02);
+    } catch (error) {
+        // Sound is optional; the puzzle still works without it.
+    }
+}
+
+function startMusic() {
+    if (!soundOn || musicTimer !== null) return;
+    if (!ensureAudio()) return;
+
+    const melody = [
+        261.63, 329.63, 392.00, 329.63,
+        293.66, 349.23, 440.00, 349.23,
+        261.63, 329.63, 392.00, 523.25,
+        440.00, 392.00, 329.63, 293.66
+    ];
+
+    musicTimer = setInterval(() => {
+        if (!soundOn || !audioContext) return;
+
+        const note = melody[musicIndex % melody.length];
+        tone(note, 0.34, 0.012, "sine");
+        musicIndex++;
+
+    }, 440);
+}
+
+function stopMusic() {
+    if (musicTimer !== null) {
+        clearInterval(musicTimer);
+        musicTimer = null;
+    }
+}
+
+function clickSound() {
+    tone(480, 0.09, 0.035, "triangle");
+}
+
+function waterSound() {
+    tone(660, 0.16, 0.045, "sine");
+    tone(880, 0.22, 0.035, "sine", 0.10);
+}
+
+function winSound() {
+    [523.25, 659.25, 783.99, 1046.5].forEach(
+        (note, i) => tone(note, 0.42, 0.045, "sine", i * 0.13)
+    );
+}
+
+const soundButton = document.getElementById("soundButton");
+
+function updateSoundButton() {
+    soundButton.textContent = soundOn ? "♫" : "♪̸";
+    soundButton.style.opacity = soundOn ? "1" : "0.55";
+}
+
+soundButton.addEventListener("click", () => {
+    soundOn = !soundOn;
+
+    if (soundOn) {
+        ensureAudio();
+        startMusic();
+        clickSound();
+    } else {
+        stopMusic();
+    }
+
+    updateSoundButton();
+});
+
+// --------------------------------------------------
+// 4. ROTATION AND WATER CONNECTION.
+// Turns = 0 is the correct orientation.
+// --------------------------------------------------
+
+function openings(key) {
+    return SOLUTION_MASKS[key].map(
+        direction => (direction + turns[key]) % 6
+    );
+}
+
+function findWater() {
+    const reached = new Set([START]);
+    const stack = [START];
+
+    while (stack.length > 0) {
+        const key = stack.pop();
+
+        for (const direction of openings(key)) {
+            const next = neighbour(key, direction);
+
+            if (!cellKeys.has(next) || reached.has(next)) {
+                continue;
+            }
+
+            if (openings(next).includes(opposite(direction))) {
+                reached.add(next);
+                stack.push(next);
+            }
+        }
+    }
+
+    return reached;
+}
+
+// --------------------------------------------------
+// 5. SVG DRAWING HELPERS.
+// Neighbouring hexagons touch edge-to-edge.
+// --------------------------------------------------
+
+const board = document.getElementById("board");
+
+function svgElement(name, attributes = {}) {
+    const el = document.createElementNS(
+        "http://www.w3.org/2000/svg", name
+    );
+
+    for (const [key, value] of Object.entries(attributes)) {
+        el.setAttribute(key, value);
+    }
+
+    return el;
+}
+
+function center(key) {
+    const [q, r] = key.split(",").map(Number);
+
+    return {
+        x: 250 + R * 1.5 * q,
+        y: 235 + R * SQRT3 * (r + q / 2)
+    };
+}
+
+function vertices(cx, cy) {
+    const result = [];
+
+    for (let i = 0; i < 6; i++) {
+        const angle = i * Math.PI / 3;
+
+        result.push([
+            cx + R * Math.cos(angle),
+            cy + R * Math.sin(angle)
+        ]);
+    }
+
+    return result;
+}
+
+function edgePoint(cx, cy, direction) {
+    const angle = (30 + direction * 60) * Math.PI / 180;
+    const distance = SQRT3 * R / 2;
+
+    return {
+        x: cx + distance * Math.cos(angle),
+        y: cy + distance * Math.sin(angle)
+    };
+}
+
+function addPlant(group, cx, cy, alive) {
+    const leafColor = alive ? "#65b34b" : "#b4ad70";
+    const stemColor = alive ? "#367c37" : "#9b925c";
+
+    group.appendChild(svgElement("path", {
+        d: `M ${cx} ${cy+22} L ${cx} ${cy-8}
+            M ${cx} ${cy+8} L ${cx-16} ${cy-2}
+            M ${cx} ${cy} L ${cx+17} ${cy-12}`,
+        fill: "none",
+        stroke: stemColor,
+        "stroke-width": 5.5,
+        "stroke-linecap": "round",
+        "pointer-events": "none"
+    }));
+
+    group.appendChild(svgElement("ellipse", {
+        cx: cx - 16,
+        cy: cy - 3,
+        rx: alive ? 12 : 10,
+        ry: 6,
+        transform: `rotate(30 ${cx-16} ${cy-3})`,
+        fill: leafColor,
+        "pointer-events": "none"
+    }));
+
+    group.appendChild(svgElement("ellipse", {
+        cx: cx + 17,
+        cy: cy - 13,
+        rx: alive ? 12 : 10,
+        ry: 6,
+        transform: `rotate(-30 ${cx+17} ${cy-13})`,
+        fill: leafColor,
+        "pointer-events": "none"
+    }));
+
+    if (alive) {
+        group.appendChild(svgElement("ellipse", {
+            cx: cx,
+            cy: cy - 16,
+            rx: 7,
+            ry: 11,
+            fill: "#83c957",
+            "pointer-events": "none"
+        }));
+    }
+}
+
+function addSource(group, cx, cy) {
+    group.appendChild(svgElement("circle", {
+        cx, cy, r: 17,
+        fill: "#f1fbff",
+        stroke: "#358eb8",
+        "stroke-width": 3,
+        "pointer-events": "none"
+    }));
+
+    group.appendChild(svgElement("path", {
+        d: `M ${cx} ${cy-13}
+            C ${cx-6} ${cy-3}, ${cx-11} ${cy+3}, ${cx-11} ${cy+7}
+            A 11 11 0 0 0 ${cx+11} ${cy+7}
+            C ${cx+11} ${cy+3}, ${cx+6} ${cy-3}, ${cx} ${cy-13} Z`,
+        fill: "#38aee8",
+        "pointer-events": "none"
+    }));
+}
+
+function drawTile(cell, reached) {
+    const {key} = cell;
+    const {x: cx, y: cy} = center(key);
+    const isWet = reached.has(key);
+
+    const isPlant = GOALS.includes(key);
+    const isSource = key === START;
+    const alive = isPlant && isWet;
+
+    const group = svgElement("g", {
+        class: "tile",
+        tabindex: "0",
+        role: "button",
+        "aria-label": `Rotate channel ${key}`,
+        "data-key": key
+    });
+
+    const pointString = vertices(cx, cy)
+        .map(p => `${p[0]},${p[1]}`)
+        .join(" ");
+
+    group.appendChild(svgElement("polygon", {
+        points: pointString,
+        fill: isWet ? "#b8dce5" : "#e8d3a5",
+        stroke: "#fff8e9",
+        "stroke-width": 3,
+        "stroke-linejoin": "round"
+    }));
+
+    const innerString = vertices(cx, cy)
+        .map(p => {
+            const ix = cx + (p[0] - cx) * 0.86;
+            const iy = cy + (p[1] - cy) * 0.86;
+            return `${ix},${iy}`;
+        })
+        .join(" ");
+
+    group.appendChild(svgElement("polygon", {
+        points: innerString,
+        fill: "none",
+        stroke: isWet ? "#80bdcb" : "#d4bc8a",
+        "stroke-width": 1.3,
+        "pointer-events": "none"
+    }));
+
+    // A tile may contain a straight pipe, a bend, or a junction.
+    // Each opening connects to the centre.
+    let pathData = "";
+
+    for (const direction of openings(key)) {
+        const p = edgePoint(cx, cy, direction);
+        pathData += `M ${p.x} ${p.y} L ${cx} ${cy} `;
+    }
+
+    group.appendChild(svgElement("path", {
+        d: pathData,
+        fill: "none",
+        stroke: isWet ? "#3586a9" : "#b49a6b",
+        "stroke-width": 17,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "pointer-events": "none"
+    }));
+
+    group.appendChild(svgElement("path", {
+        d: pathData,
+        fill: "none",
+        stroke: isWet ? "#6acde9" : "#d6bf90",
+        "stroke-width": 9,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+        "pointer-events": "none"
+    }));
+
+    if (isWet) {
+        group.appendChild(svgElement("path", {
+            d: pathData,
+            class: "flow-line",
+            fill: "none",
+            stroke: "#effcff",
+            "stroke-width": 2.3,
+            "stroke-linecap": "round",
+            "pointer-events": "none"
+        }));
+    }
+
+    if (isSource) {
+        addSource(group, cx, cy);
+    }
+
+    if (isPlant) {
+        addPlant(group, cx, cy, alive);
+    }
+
+    return group;
+}
+
+// --------------------------------------------------
+// 6. FINGER HINT AND SUCCESS CELEBRATION
+// --------------------------------------------------
+
+function addFingerHint() {
+    const cell = cells.find(c => c.key === "0,0");
+    const {x, y} = center(cell.key);
+
+    const hint = svgElement("g", {
+        "pointer-events": "none",
+        id: "fingerHint"
+    });
+
+    hint.appendChild(svgElement("circle", {
+        cx: x, cy: y, r: 24,
+        class: "hint-ring"
+    }));
+
+    const hand = svgElement("text", {
+        x: x + 20,
+        y: y - 18,
+        class: "hint-hand",
+        "font-family": "Arial, sans-serif"
+    });
+
+    hand.textContent = "👆";
+    hint.appendChild(hand);
+    board.appendChild(hint);
+}
+
+function makeConfetti() {
+    const colors = [
+        "#79ad55", "#e8b75f", "#5cb6d4",
+        "#e68d5c", "#c5a5d9"
+    ];
+
+    for (let i = 0; i < 45; i++) {
+        const piece = document.createElement("div");
+        piece.className = "confetti";
+        piece.style.left = Math.random() * 100 + "%";
+        piece.style.background =
+            colors[Math.floor(Math.random() * colors.length)];
+        piece.style.animationDelay = Math.random() * 0.8 + "s";
+        piece.style.transform =
+            `rotate(${Math.random() * 360}deg)`;
+
+        document.body.appendChild(piece);
+
+        setTimeout(() => piece.remove(), 4000);
+    }
+}
+
+function showVictory() {
+    if (victoryShown) return;
+
+    victoryShown = true;
+
+    document.getElementById("celebration").classList.add("show");
+    makeConfetti();
+
+    if (soundOn) {
+        ensureAudio();
+        winSound();
+    }
+}
+
+// --------------------------------------------------
+// 7. UPDATE GAME
+// --------------------------------------------------
+
+const movesText = document.getElementById("moves");
+const plantCountText = document.getElementById("plantCount");
+const message = document.getElementById("message");
+
+function render() {
+    const reached = findWater();
+    const watered = GOALS.filter(key => reached.has(key)).length;
+
+    board.replaceChildren();
+
+    for (const cell of cells) {
+        board.appendChild(drawTile(cell, reached));
+    }
+
+    if (moves === 0) {
+        addFingerHint();
+    }
+
+    movesText.textContent = moves;
+    plantCountText.textContent = `${watered} / 2`;
+
+    message.textContent = watered === 1
+        ? "One little plant is blooming!"
+        : "";
+
+    const currentGoals = GOALS.map(key => reached.has(key));
+
+    if (previousGoals !== null && moves > 0) {
+        const newlyWatered = currentGoals.some(
+            (value, i) => value && !previousGoals[i]
+        );
+
+        if (newlyWatered && soundOn) {
+            waterSound();
+        }
+    }
+
+    previousGoals = currentGoals;
+
+    if (watered === 2 && moves > 0) {
+        message.textContent = "Both plants are alive again!";
+        showVictory();
+    }
+}
+
+// --------------------------------------------------
+// 8. CLICK A HEXAGON TO ROTATE IT
+// No separate rotate buttons.
+// --------------------------------------------------
+
+function activateAudio() {
+    if (soundOn) {
+        ensureAudio();
+        startMusic();
+    }
+}
+
+board.addEventListener("click", event => {
+    const tile = event.target.closest(".tile");
+
+    if (!tile) return;
+
+    activateAudio();
+
+    const key = tile.getAttribute("data-key");
+
+    turns[key] = (turns[key] + 1) % 6;
+    moves++;
+
+    if (soundOn) {
+        clickSound();
+    }
+
+    render();
+});
+
+board.addEventListener("keydown", event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+
+    const tile = event.target.closest(".tile");
+
+    if (!tile) return;
+
+    event.preventDefault();
+    activateAudio();
+
+    const key = tile.getAttribute("data-key");
+
+    turns[key] = (turns[key] + 1) % 6;
+    moves++;
+
+    if (soundOn) {
+        clickSound();
+    }
+
+    render();
+});
+
+// --------------------------------------------------
+// 9. RESET
+// --------------------------------------------------
+
+function resetGame() {
+    turns = {};
+
+    for (const cell of cells) {
+        const {q, r, key} = cell;
+
+        // Deterministic scrambled starting orientation.
+        turns[key] = ((q + 2) * 7 + (r + 2) * 3) % 5 + 1;
+    }
+
+    moves = 0;
+    victoryShown = false;
+    previousGoals = null;
+
+    document.getElementById("celebration").classList.remove("show");
+
+    document.querySelectorAll(".confetti").forEach(
+        el => el.remove()
+    );
+
+    // Ensure both plants are not already watered at the start.
+    for (let i = 0; i < 6; i++) {
+        const reached = findWater();
+
+        if (!GOALS.every(key => reached.has(key))) {
+            break;
+        }
+
+        turns[GOALS[0]] = (turns[GOALS[0]] + 1) % 6;
+    }
+
+    render();
+}
+
+document.getElementById("reset").addEventListener("click", () => {
+    activateAudio();
+    resetGame();
+});
+
+document.getElementById("playAgain").addEventListener("click", () => {
+    resetGame();
+    activateAudio();
+});
+
+// Start with a scrambled board.
+updateSoundButton();
+resetGame();
+
+</script>
+</body>
+</html>
+"""
+
+components.html(
+    GAME_HTML,
+    height=820,
+    scrolling=False
 )
