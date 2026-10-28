@@ -35,15 +35,17 @@ I also noticed during my own playtesting that some surrounding tiles were not be
 
 ### User Trial
 
-The assignment requires another person to try the experience before its rules are explained.
+The game was tested by another person who tried the experience before receiving an explanation of the controls.
 
-**Complete this section after conducting that test:**
+- **Test setup:** I invited another person to play the game and provide feedback on the gameplay and difficulty.
 
-- **Test setup:** I asked one person to try the game without explaining the controls first.
-- **What the player attempted:** [Describe the first action the player tried.]
-- **Where the player hesitated:** [Describe any confusing tile, symbol, objective, or control.]
-- **Feedback or observation:** [Record what the player actually said or did.]
-- **Decision:** [Describe one improvement made in response, or explain why the existing design was retained.]
+- **What the player attempted:** The player tried the hexagonal water-channel puzzle and evaluated its objectives and difficulty.
+
+- **Where the player hesitated:** No specific moment of hesitation was recorded during this test.
+
+- **Feedback or observation:** The player felt that requiring every water channel to be connected before completing a level was unnecessary. They also found the original levels too easy, which reduced the challenge and replay value.
+
+- **Decision:** Based on this feedback, I changed the win condition so that players only need to deliver water to all target plants, rather than connecting every channel. I also increased the difficulty across the three levels by making the layouts more complex and encouraging players to use more surrounding hexagonal tiles. The final level requires players to revive three plants, providing a more challenging goal and a clearer sense of progression.
 
 I will use this observation to evaluate whether the game's controls and feedback communicate the puzzle's objective clearly.
 
