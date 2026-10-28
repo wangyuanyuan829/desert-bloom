@@ -4,7 +4,7 @@
 
 **Live Demo:** [Play Desert Bloom] (https://desert-bloom.onrender.com/))
 
-![Desert Bloom gameplay screenshot](![Desert Bloom gameplay screenshot](d400ad7074f8306cbfb3334097b78543.png))
+![![Desert Bloom gameplay screenshot](d400ad7074f8306cbfb3334097b78543.png)
 
 ## About the Project
 
