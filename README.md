@@ -1,71 +1,89 @@
 # Desert Bloom 🌵💧
 
-**Desert Bloom** is a small browser-based puzzle made with Python and Streamlit. The player rotates pipe tiles to try to connect a water source to a thirsty tree in a desert.
+**A little water. A new life.**
 
-## Intended user
+**Live Demo:** [Play Desert Bloom](PASTE_YOUR_RENDER_URL_HERE)
 
-People who enjoy short, casual logic puzzles. The game is designed to be understandable without a long tutorial.
+![Desert Bloom gameplay screenshot](screenshot.png)
 
-## Main interaction
+## About the Project
 
-- Click a tile to rotate its pipe by one step (60 degrees).
-- The program checks which tiles are reachable from the water source through matching pipe openings.
-- Connected tiles are labelled `WATER CONNECTED`; other tiles are labelled `DRY TILE`.
-- When the water reaches the tree, the game displays a success message.
-- Use **Reset puzzle** to restore the starting state.
+Desert Bloom is a small browser-based hexagonal puzzle game built with Python and Streamlit.
 
-This creates a simple interaction loop: **input → changed pipe orientation → connection feedback → next decision**.
+The player rotates connected hexagonal channel tiles to guide water from a water source to withered plants in a desert. When a plant receives water, it comes back to life.
 
-## Built with
+The goal is not to connect every channel on the board. Players only need to deliver water to the target plants to complete each level.
 
-- Python 3.10 or newer
-- Streamlit
+## Intended Users
 
-## Run locally
+The game is designed for people who enjoy short, casual logic puzzles. It aims to provide a simple but satisfying experience through experimentation, visual feedback, and progressively more challenging levels.
 
-1. Install Python 3.10+.
-2. Open this repository folder in VS Code.
-3. Open the VS Code terminal.
-4. Create and activate a virtual environment.
+## Main Interaction
 
-### Windows PowerShell
+- **Rotate a tile:** Click a hexagonal tile to rotate its channel.
+- **Guide the water:** Connect channel openings so water can flow from the source to the target plants.
+- **Revive the plants:** A plant changes from a withered state to a living state when water reaches it.
+- **Progress through levels:** Complete three levels with increasing difficulty. The final level requires the player to water three plants.
+- **Receive feedback:** The game shows water connections, the number of moves, plant progress, and a success message when the level is completed.
+- **Continue or reset:** Continue to the next level after winning, or reset the current puzzle if needed.
+- **Audio controls:** Use the music control to turn the background music on or off.
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-streamlit run app.py
-```
+## How to Run Locally
 
-### macOS / Linux
+### Requirements
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-streamlit run app.py
-```
+- Python
+- `uv`
+- The dependencies listed in `requirements.txt`
 
-Streamlit will print a local URL, usually `http://localhost:8501`. Open it in a browser.
+### Windows (PowerShell)
 
-## Files
+Run these commands from the project directory:
 
-- `app.py` — game interface and puzzle logic
-- `requirements.txt` — Python dependency list
-- `PROCESS.md` — development process and user-test record template
-- `CREDITS.md` — credits and asset notes
+1. Create a virtual environment:
 
-## Known limitations
+   ```powershell
+   uv venv
+   ```
 
-- This is a small prototype with a simplified tile layout and pipe symbols rather than a fully illustrated hexagonal board.
-- The game prioritises the interaction loop and clear feedback over complex animation.
-- The puzzle layout and tile orientations may be refined during testing. Confirm that the current puzzle has a reachable solution before submitting.
-- The app needs Python and Streamlit installed to run locally. An online deployment is optional.
+2. Install the dependencies:
 
-## Screenshot / live link
+   ```powershell
+   uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+   ```
 
-Add a screenshot after running the app and place it in this repository (for example, `assets/screenshot.png`). If you deploy the app, add the public URL here.
+3. Start the game:
+
+   ```powershell
+   uv run --python .venv\Scripts\python.exe streamlit run app.py
+   ```
+
+4. Open the local URL shown in the terminal, usually `http://localhost:8501`.
+
+### Online Version
+
+The game is deployed on Render. Open the Live Demo link at the top of this document to play it in a browser.
+
+The free hosting service may temporarily sleep after a period of inactivity, so the first visit may take some time to load.
+
+## Design and Iteration
+
+The project began as a simple pipe-connection puzzle inspired by hexagonal rotation games. It was adapted into a desert irrigation experience in which water helps restore life.
+
+The main design decisions were to make each tile directly clickable, connect the hexagonal board visually, use plant revival as the main goal, and increase difficulty across three levels.
+
+Feedback about the original objective led to a more focused win condition: players need to water the target plants rather than connect every channel.
+
+## Known Limitations
+
+- The game uses a predefined set of levels rather than an unlimited procedural puzzle generator.
+- The puzzle is designed around a small number of target plants and a fixed board layout for each level.
+- Online availability depends on the hosting service.
 
 ## Credits
 
-See [`CREDITS.md`](CREDITS.md). All development decisions and changes should be reflected in the Git commit history.
+See [CREDITS.md](CREDITS.md) for information about code, tools, and media used in the project.
+
+## Development Process
+
+See [PROCESS.md](PROCESS.md) for the design changes, user testing, and use of AI tools.
