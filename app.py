@@ -212,7 +212,7 @@ html, body {
 
 .win-plant {
     margin-bottom: 8px;
-    font-size: 48px;
+    font-size: 42px;
 }
 
 .win-title {
@@ -261,7 +261,9 @@ html, body {
 }
 
 @media (max-width: 480px) {
-    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats { gap: 5px; }
+    .stat { padding: 7px; }
+    .stat-label { font-size: 11px; }
 }
 </style>
 </head>
@@ -273,7 +275,7 @@ html, body {
         <div class="subtitle">A little water. A new life.</div>
         <div class="level-label" id="levelLabel">LEVEL 1 / 3</div>
         <button id="soundButton" class="sound-button"
-                aria-label="Toggle music">♫</button>
+                aria-label="Toggle sound">♫</button>
     </div>
 
     <svg id="board" class="board"
@@ -291,8 +293,8 @@ html, body {
             <div class="stat-value" id="plantCount">0 / 2</div>
         </div>
         <div class="stat">
-            <div class="stat-label">Network connected</div>
-            <div class="stat-value" id="networkCount">0 / 19</div>
+            <div class="stat-label">Tiles reached</div>
+            <div class="stat-value" id="networkCount">0 / 7</div>
         </div>
     </div>
 
@@ -317,27 +319,34 @@ html, body {
 <script>
 "use strict";
 
-// ------------------------------------------
-// THREE DIFFERENT LEVELS
-// ------------------------------------------
+// ==========================================
+// 1. THREE LEVELS
+// ==========================================
 
 const levels = [
     {
         name: "First Sprout",
-        start: "-2,0",
-        goals: ["2,-1", "2,0"],
+        radius: 1,
+        start: "-1,0",
+        goals: ["1,-1", "1,0"],
         order: [0,1,2,3,4,5]
     },
     {
         name: "Desert Crossing",
+        radius: 2,
         start: "-2,0",
-        goals: ["2,0", "1,1"],
+        goals: ["2,-1", "1,1"],
+        extraCells: [
+            "-2,0", "-2,1", "-1,2",
+            "0,2", "1,1", "2,-1"
+        ],
         order: [2,1,0,5,4,3]
     },
     {
         name: "Hidden Oasis",
-        start: "0,-2",
-        goals: ["2,0", "2,-1"],
+        radius: 2,
+        start: "-2,0",
+        goals: ["2,-1", "2,0", "0,2"],
         order: [1,3,5,0,2,4]
     }
 ];
@@ -346,8 +355,10 @@ let levelIndex = 0;
 let START;
 let GOALS;
 let SOLUTION_MASKS = {};
+let cells = [];
+let cellKeys = new Set();
+let R = 46;
 
-const R = 46;
 const SQRT3 = Math.sqrt(3);
 
 const DIRECTIONS = [
@@ -359,32 +370,54 @@ const DIRECTIONS = [
     [1,-1]
 ];
 
-// 19 connected hexagonal tiles.
-const cells = [];
+const OPPOSITE = {
+    0:3, 1:4, 2:5,
+    3:0, 4:1, 5:2
+};
 
-for (let q=-2; q<=2; q++) {
-    for (let r=-2; r<=2; r++) {
-        if (Math.abs(q+r)<=2) {
-            cells.push({q,r,key:`${q},${r}`});
-        }
-    }
+function hexDistance(q,r) {
+    return Math.max(
+        Math.abs(q),
+        Math.abs(r),
+        Math.abs(q+r)
+    );
 }
 
-const cellKeys = new Set(cells.map(c=>c.key));
+function makeCells(config) {
+    const all = [];
 
-function neighbour(key,direction) {
+    for (let q=-config.radius; q<=config.radius; q++) {
+        for (let r=-config.radius; r<=config.radius; r++) {
+            if (hexDistance(q,r) <= config.radius) {
+                all.push({q,r,key:`${q},${r}`});
+            }
+        }
+    }
+
+    if (config.extraCells) {
+        const allowed = new Set([
+            ...all
+                .filter(c => hexDistance(c.q,c.r) <= 1)
+                .map(c => c.key),
+            ...config.extraCells
+        ]);
+
+        return all.filter(c => allowed.has(c.key));
+    }
+
+    return all;
+}
+
+function neighbour(key, direction) {
     const [q,r] = key.split(",").map(Number);
     const [dq,dr] = DIRECTIONS[direction];
+
     return `${q+dq},${r+dr}`;
 }
 
-function opposite(direction) {
-    return (direction+3)%6;
-}
-
-// Build a spanning network that uses every tile.
-// Every tile has a correct orientation when turns[key] = 0.
-function createSolutionMasks(start,order) {
+// Build a connected solution network.
+// The player does NOT need to connect every tile to win.
+function createSolutionMasks(start, order) {
     const masks = {};
 
     for (const cell of cells) {
@@ -394,7 +427,7 @@ function createSolutionMasks(start,order) {
     const visited = new Set([start]);
     const queue = [start];
 
-    while (queue.length>0) {
+    while (queue.length > 0) {
         const key = queue.shift();
 
         for (const d of order) {
@@ -408,7 +441,21 @@ function createSolutionMasks(start,order) {
             queue.push(next);
 
             masks[key].push(d);
-            masks[next].push(opposite(d));
+            masks[next].push(OPPOSITE[d]);
+        }
+    }
+
+    // Add an extra opening to some dead ends.
+    for (const cell of cells) {
+        const key = cell.key;
+
+        if (masks[key].length < 2) {
+            for (let d=0; d<6; d++) {
+                if (!masks[key].includes(d)) {
+                    masks[key].push(d);
+                    break;
+                }
+            }
         }
     }
 
@@ -418,8 +465,14 @@ function createSolutionMasks(start,order) {
 function setupLevel() {
     const config = levels[levelIndex];
 
+    cells = makeCells(config);
+    cellKeys = new Set(cells.map(c => c.key));
+
     START = config.start;
     GOALS = config.goals;
+
+    R = config.radius === 1 ? 64 :
+        (levelIndex === 1 ? 50 : 46);
 
     SOLUTION_MASKS = createSolutionMasks(
         START,
@@ -430,9 +483,9 @@ function setupLevel() {
         `LEVEL ${levelIndex+1} / ${levels.length} · ${config.name}`;
 }
 
-// ------------------------------------------
-// SOUND: GENERATED LOCALLY IN THE BROWSER
-// ------------------------------------------
+// ==========================================
+// 2. SOUND AND BACKGROUND MUSIC
+// ==========================================
 
 let soundOn = true;
 let audioContext = null;
@@ -449,7 +502,7 @@ function ensureAudio() {
             audioContext = new AudioClass();
         }
 
-        if (audioContext.state==="suspended") {
+        if (audioContext.state === "suspended") {
             audioContext.resume();
         }
 
@@ -463,7 +516,7 @@ function tone(frequency,duration,volume,type="sine",delay=0) {
     if (!soundOn || !audioContext) return;
 
     try {
-        const start = audioContext.currentTime+delay;
+        const start = audioContext.currentTime + delay;
         const oscillator = audioContext.createOscillator();
         const gain = audioContext.createGain();
 
@@ -487,7 +540,7 @@ function tone(frequency,duration,volume,type="sine",delay=0) {
 }
 
 function startMusic() {
-    if (!soundOn || musicTimer!==null) return;
+    if (!soundOn || musicTimer !== null) return;
     if (!ensureAudio()) return;
 
     const melody = [
@@ -497,18 +550,20 @@ function startMusic() {
         440.00,392.00,329.63,293.66
     ];
 
-    musicTimer = setInterval(()=>{
+    musicTimer = setInterval(() => {
         if (!soundOn || !audioContext) return;
 
-        tone(melody[musicIndex%melody.length],
-             0.34,0.012,"sine");
+        tone(
+            melody[musicIndex % melody.length],
+            0.34,0.012,"sine"
+        );
 
         musicIndex++;
     },440);
 }
 
 function stopMusic() {
-    if (musicTimer!==null) {
+    if (musicTimer !== null) {
         clearInterval(musicTimer);
         musicTimer = null;
     }
@@ -532,7 +587,7 @@ function waterSound() {
 
 function winSound() {
     [523.25,659.25,783.99,1046.5].forEach(
-        (note,i)=>tone(note,0.42,0.045,"sine",i*0.13)
+        (note,i) => tone(note,0.42,0.045,"sine",i*0.13)
     );
 }
 
@@ -543,7 +598,7 @@ function updateSoundButton() {
     soundButton.style.opacity = soundOn ? "1" : "0.55";
 }
 
-soundButton.addEventListener("click",()=>{
+soundButton.addEventListener("click", () => {
     soundOn = !soundOn;
 
     if (soundOn) {
@@ -556,9 +611,9 @@ soundButton.addEventListener("click",()=>{
     updateSoundButton();
 });
 
-// ------------------------------------------
-// WATER CONNECTION LOGIC
-// ------------------------------------------
+// ==========================================
+// 3. WATER CONNECTION LOGIC
+// ==========================================
 
 let turns = {};
 let moves = 0;
@@ -567,7 +622,7 @@ let previousGoals = null;
 
 function openings(key) {
     return SOLUTION_MASKS[key].map(
-        d=>(d+turns[key])%6
+        d => (d + turns[key]) % 6
     );
 }
 
@@ -575,7 +630,7 @@ function findWater() {
     const reached = new Set([START]);
     const stack = [START];
 
-    while (stack.length>0) {
+    while (stack.length > 0) {
         const key = stack.pop();
 
         for (const d of openings(key)) {
@@ -585,7 +640,7 @@ function findWater() {
                 continue;
             }
 
-            if (openings(next).includes(opposite(d))) {
+            if (openings(next).includes(OPPOSITE[d])) {
                 reached.add(next);
                 stack.push(next);
             }
@@ -595,13 +650,13 @@ function findWater() {
     return reached;
 }
 
-// ------------------------------------------
-// DRAW HEXAGON ARTWORK
-// ------------------------------------------
+// ==========================================
+// 4. DRAW HEXAGON TILES
+// ==========================================
 
 const board = document.getElementById("board");
 
-function svgElement(name,attributes={}) {
+function svgElement(name, attributes={}) {
     const el = document.createElementNS(
         "http://www.w3.org/2000/svg",name
     );
@@ -617,15 +672,15 @@ function center(key) {
     const [q,r] = key.split(",").map(Number);
 
     return {
-        x:250+R*1.5*q,
-        y:235+R*SQRT3*(r+q/2)
+        x:250 + R*1.5*q,
+        y:235 + R*SQRT3*(r+q/2)
     };
 }
 
 function vertices(cx,cy) {
     const result = [];
 
-    for (let i=0;i<6;i++) {
+    for (let i=0; i<6; i++) {
         const angle = i*Math.PI/3;
 
         result.push([
@@ -712,7 +767,7 @@ function drawTile(cell,reached) {
 
     const wet = reached.has(key);
     const isPlant = GOALS.includes(key);
-    const isSource = key===START;
+    const isSource = key === START;
     const alive = isPlant && wet;
 
     const group = svgElement("g",{
@@ -724,7 +779,7 @@ function drawTile(cell,reached) {
     });
 
     const points = vertices(cx,cy)
-        .map(p=>`${p[0]},${p[1]}`).join(" ");
+        .map(p => `${p[0]},${p[1]}`).join(" ");
 
     group.appendChild(svgElement("polygon",{
         points,
@@ -735,7 +790,7 @@ function drawTile(cell,reached) {
     }));
 
     const inner = vertices(cx,cy)
-        .map(p=>{
+        .map(p => {
             const ix=cx+(p[0]-cx)*0.86;
             const iy=cy+(p[1]-cy)*0.86;
             return `${ix},${iy}`;
@@ -794,12 +849,14 @@ function drawTile(cell,reached) {
     return group;
 }
 
-// ------------------------------------------
-// FIRST-CLICK HAND HINT
-// ------------------------------------------
+// ==========================================
+// 5. FIRST-CLICK HINT AND CONFETTI
+// ==========================================
 
 function addFingerHint() {
-    const cell = cells.find(c=>c.key==="0,0");
+    const cell = cells.find(c => c.key === "0,0");
+    if (!cell) return;
+
     const {x,y} = center(cell.key);
 
     const hint = svgElement("g",{
@@ -808,7 +865,7 @@ function addFingerHint() {
     });
 
     hint.appendChild(svgElement("circle",{
-        cx:x,cy:y,r:24,
+        cx:x,cy:y,r:R*0.52,
         class:"hint-ring"
     }));
 
@@ -829,7 +886,7 @@ function makeConfetti() {
         "#e68d5c","#c5a5d9"
     ];
 
-    for (let i=0;i<45;i++) {
+    for (let i=0; i<45; i++) {
         const piece=document.createElement("div");
 
         piece.className="confetti";
@@ -840,33 +897,34 @@ function makeConfetti() {
 
         document.body.appendChild(piece);
 
-        setTimeout(()=>piece.remove(),4000);
+        setTimeout(() => piece.remove(),4000);
     }
 }
 
-// ------------------------------------------
-// VICTORY AND LEVEL PROGRESSION
-// ------------------------------------------
+// ==========================================
+// 6. VICTORY AND LEVEL PROGRESSION
+// ==========================================
 
 function showVictory() {
     if (victoryShown) return;
 
     victoryShown=true;
 
-    const finalLevel=levelIndex===levels.length-1;
+    const finalLevel = levelIndex === levels.length-1;
+    const plantCount = GOALS.length;
 
-    document.getElementById("winPlant").textContent=
-        finalLevel ? "🌵 🌸 🌿" : "🌱 🌿";
+    document.getElementById("winPlant").textContent =
+        finalLevel ? "🌱 🌿 🌸" : "🌱 🌿";
 
-    document.getElementById("winTitle").textContent=
+    document.getElementById("winTitle").textContent =
         finalLevel ? "All Levels Complete!" : "Desert Bloom!";
 
-    document.getElementById("winDescription").textContent=
+    document.getElementById("winDescription").textContent =
         finalLevel
-        ? "You restored every channel and brought life back to the entire desert!"
-        : `Level ${levelIndex+1} complete! Every channel is connected and both plants are alive!`;
+        ? "All three plants are alive! You restored life to the entire desert."
+        : `Level ${levelIndex+1} complete! Both plants have received water.`;
 
-    document.getElementById("nextLevelButton").textContent=
+    document.getElementById("nextLevelButton").textContent =
         finalLevel ? "Play from Level 1 ↻" :
         `Continue to Level ${levelIndex+2} →`;
 
@@ -884,7 +942,7 @@ function showVictory() {
 function goToNextLevel() {
     activateAudio();
 
-    if (levelIndex<levels.length-1) {
+    if (levelIndex < levels.length-1) {
         levelIndex++;
     } else {
         levelIndex=0;
@@ -898,14 +956,14 @@ document.getElementById("nextLevelButton")
     .addEventListener("click",goToNextLevel);
 
 document.getElementById("replayLevelButton")
-    .addEventListener("click",()=>{
+    .addEventListener("click",() => {
         activateAudio();
         resetGame();
     });
 
-// ------------------------------------------
-// MAIN RENDER AND VICTORY CONDITION
-// ------------------------------------------
+// ==========================================
+// 7. RENDER AND CHECK VICTORY
+// ==========================================
 
 const movesText=document.getElementById("moves");
 const plantCountText=document.getElementById("plantCount");
@@ -916,7 +974,7 @@ function render() {
     const reached=findWater();
 
     const watered=GOALS.filter(
-        key=>reached.has(key)
+        key => reached.has(key)
     ).length;
 
     board.replaceChildren();
@@ -928,22 +986,16 @@ function render() {
     if (moves===0) addFingerHint();
 
     movesText.textContent=moves;
-    plantCountText.textContent=`${watered} / 2`;
+    plantCountText.textContent=`${watered} / ${GOALS.length}`;
     networkCountText.textContent=`${reached.size} / ${cells.length}`;
 
-    if (watered===1) {
-        message.textContent="One little plant is blooming!";
-    } else {
-        message.textContent="";
-    }
-
     const currentGoals=GOALS.map(
-        key=>reached.has(key)
+        key => reached.has(key)
     );
 
-    if (previousGoals!==null && moves>0) {
+    if (previousGoals !== null && moves > 0) {
         const newlyWatered=currentGoals.some(
-            (value,i)=>value && !previousGoals[i]
+            (value,i) => value && !previousGoals[i]
         );
 
         if (newlyWatered && soundOn) waterSound();
@@ -951,29 +1003,24 @@ function render() {
 
     previousGoals=currentGoals;
 
-    // ALL 19 tiles must be connected, and both plants watered.
-    if (
-        watered===2 &&
-        reached.size===cells.length &&
-        moves>0
-    ) {
-        message.textContent="The entire desert is blooming!";
+    // WIN CONDITION:
+    // Water all plants in this level.
+    // Other dry tiles do not prevent victory.
+    if (watered === GOALS.length && moves > 0) {
+        message.textContent="All plants are blooming!";
         showVictory();
-    } else if (watered===2) {
-        message.textContent=
-            "Both plants are alive! Connect the remaining channels.";
-    } else if (reached.size===cells.length) {
-        message.textContent=
-            "The network is connected. Water both plants!";
+    } else if (watered > 0) {
+        message.textContent =
+            `${watered} of ${GOALS.length} plants are blooming!`;
     } else {
-        message.textContent=
-            "Keep connecting the irrigation channels.";
+        message.textContent =
+            "Guide water to all thirsty plants.";
     }
 }
 
-// ------------------------------------------
-// CLICK A HEXAGON TO ROTATE IT
-// ------------------------------------------
+// ==========================================
+// 8. CLICK A HEXAGON TO ROTATE IT
+// ==========================================
 
 function rotateTile(key) {
     if (victoryShown) return;
@@ -988,15 +1035,15 @@ function rotateTile(key) {
     render();
 }
 
-board.addEventListener("click",event=>{
+board.addEventListener("click",event => {
     const tile=event.target.closest(".tile");
     if (!tile) return;
 
     rotateTile(tile.getAttribute("data-key"));
 });
 
-board.addEventListener("keydown",event=>{
-    if (event.key!=="Enter" && event.key!==" ") return;
+board.addEventListener("keydown",event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
 
     const tile=event.target.closest(".tile");
     if (!tile) return;
@@ -1005,19 +1052,16 @@ board.addEventListener("keydown",event=>{
     rotateTile(tile.getAttribute("data-key"));
 });
 
-// ------------------------------------------
-// RESET CURRENT LEVEL
-// ------------------------------------------
+// ==========================================
+// 9. RESET CURRENT LEVEL
+// ==========================================
 
 function resetGame() {
     turns={};
 
-    // Start with randomly rotated channels.
+    // Randomly rotate all tiles to scramble the puzzle.
     for (const cell of cells) {
-        const {q,r,key}=cell;
-
-        turns[key]=
-            ((q+2)*7+(r+2)*3+(levelIndex+1)*5)%5+1;
+        turns[cell.key] = Math.floor(Math.random()*5)+1;
     }
 
     moves=0;
@@ -1028,34 +1072,38 @@ function resetGame() {
         .classList.remove("show");
 
     document.querySelectorAll(".confetti").forEach(
-        el=>el.remove()
+        el => el.remove()
     );
 
-    // Ensure the initial board is not already a completed puzzle.
-    for (let attempt=0;attempt<cells.length;attempt++) {
+    // Avoid starting with all target plants already watered.
+    for (let attempt=0; attempt<100; attempt++) {
         const reached=findWater();
 
-        const bothWatered=GOALS.every(
-            key=>reached.has(key)
+        const allWatered=GOALS.every(
+            key => reached.has(key)
         );
 
-        const allConnected=reached.size===cells.length;
+        if (!allWatered) break;
 
-        if (!(bothWatered && allConnected)) break;
+        const key=cells[
+            Math.floor(Math.random()*cells.length)
+        ].key;
 
-        const key=cells[attempt].key;
         turns[key]=(turns[key]+1)%6;
     }
 
     render();
 }
 
-document.getElementById("reset").addEventListener("click",()=>{
+document.getElementById("reset").addEventListener("click",() => {
     activateAudio();
     resetGame();
 });
 
-// Start the game.
+// ==========================================
+// 10. START
+// ==========================================
+
 updateSoundButton();
 setupLevel();
 resetGame();
@@ -1067,6 +1115,6 @@ resetGame();
 
 components.html(
     GAME_HTML,
-    height=980,
+    height=850,
     scrolling=True
 )
