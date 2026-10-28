@@ -43,11 +43,11 @@ The game was tested by another person who tried the experience before receiving 
 
 - **Where the player hesitated:** No specific moment of hesitation was recorded during this test.
 
-- **Feedback or observation:** The player felt that requiring every water channel to be connected before completing a level was unnecessary. They also found the original levels too easy, which reduced the challenge and replay value.
+**Feedback or observation:** The player felt that requiring every water channel to be connected before completing a level was unnecessary. They also found the original levels too easy, which made the gameplay less challenging.
 
 - **Decision:** Based on this feedback, I changed the win condition so that players only need to deliver water to all target plants, rather than connecting every channel. I also increased the difficulty across the three levels by making the layouts more complex and encouraging players to use more surrounding hexagonal tiles. The final level requires players to revive three plants, providing a more challenging goal and a clearer sense of progression.
 
-I will use this observation to evaluate whether the game's controls and feedback communicate the puzzle's objective clearly.
+This feedback informed my design decisions and helped me improve the game's objectives, difficulty progression, and overall playability.
 
 ## 4. Use of AI Tools
 
