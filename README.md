@@ -2,7 +2,7 @@
 
 **A little water. A new life.**
 
-**Live Demo:** [Play Desert Bloom] (https://desert-bloom.onrender.com/))
+**Live Demo:** (https://desert-bloom.onrender.com/))
 
 ## Gameplay Screenshot
 
